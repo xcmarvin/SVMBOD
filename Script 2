@@ -1,0 +1,125 @@
+library(caret)
+library(e1071)
+
+# Data import and normalisation -------------------------------------------
+trainData <- read.csv(filename, header = TRUE)
+testData <- read.csv(filename, header = TRUE)
+fullData <- rbind(trainData,testData)
+minY <- min(fullData$y)
+maxY <- max(fullData$y)
+preFullData <- preProcess(fullData, method = "range")
+newFullData <- predict(preFullData, fullData)
+newTrainData <- newFullData[1:528, ]
+newTestData <- newFullData[529:658, ]
+
+# Model performance for original training set -----------------------------
+output <- function(trainData, testData, newTrainData, newTestData) {
+  model <- svm(y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10 + x11 + x12 + x13 + x14 + x15 + x16 + x17 + x18 + x19 + x20 + x21 + x22 + x23 + x24 + x25 + x26 + x27 + x28 + x29 + x30 + + x31 + x32 + x33 + x34 + x35 + x36 + x37 + x38 + x39 + x40, newTrainData, cost = 4, epsilon = 0.04, gamma = 0.03, scale = FALSE)
+  trainY <- predict(model, newTrainData)
+  testY <- predict(model, newTestData)
+  trainY <- trainY * (maxY - minY) + minY
+  testY <- testY * (maxY - minY) + minY
+  trainError <- trainY - trainData$y 
+  testError <- testY - testData$y 
+  trainOutput <- data.frame(trainData$y, trainY, trainError)
+  testOutput <- data.frame(testData$y, testY, testError)
+  lowTrainOutput <- subset(trainOutput, trainData$y < 150)
+  highTrainOutput <- subset(trainOutput, trainData$y >= 150)
+  lowTestOutput <- subset(testOutput, testData$y < 150)
+  highTestOutput <- subset(testOutput, testData$y >= 150)
+  trainmae <- c(mean(abs(trainOutput$trainError)), mean(abs(lowTrainOutput$trainError)), mean(abs(highTrainOutput$trainError)))
+  testmae <- c(mean(abs(testOutput$testError)), mean(abs(lowTestOutput$testError)), mean(abs(highTestOutput$testError)))
+  trainbias <- c(mean(trainOutput$trainError), mean(lowTrainOutput$trainError), mean(highTrainOutput$trainError))
+  testbias <- c(mean(testOutput$testError), mean(lowTestOutput$testError), mean(highTestOutput$testError))
+  trainr2 <- c((cor(trainOutput)[2,1])^2, (cor(lowTrainOutput)[2,1])^2, (cor(highTrainOutput)[2,1])^2) 
+  testr2 <- c((cor(testOutput)[2,1])^2, (cor(lowTestOutput)[2,1])^2, (cor(highTestOutput)[2,1])^2)
+  list(trainOutput = trainOutput, testOutput = testOutput, trainmae = trainmae, testmae = testmae, trainbias = trainbias, testbias = testbias, trainr2 = trainr2, testr2 = testr2)
+}
+
+modelStatResult <- output(trainData, testData, newTrainData, newTestData)
+
+# Model performances for different training sets --------------------------
+lowData <- subset(newTrainData, y < (150 - minY) / (maxY - minY))
+highData <- subset(newTrainData, y >= (150 - minY) / (maxY - minY))
+
+combineData <- function(trainData, highTrainData, m) {
+  for(i in 1:m) {
+    trainData <- trainData[-(1:16), ]
+    trainData <- rbind(trainData, highData)
+  }
+  return(trainData)
+}
+
+diffOutput <- function(lowData, highData, testData, newTestData, n) {
+  for (i in 1:10) {
+    set.seed(i)
+    tempLowData <- lowData[sample(nrow(lowData)), ]
+    tempTrainData <- rbind(tempLowData, highData)
+    tempTrainData <- combineData(tempTrainData, highData, n)
+    model <- svm(y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10 + x11 + x12 + x13 + x14 + x15 + x16 + x17 + x18 + x19 + x20 + x21 + x22 + x23 + x24 + x25 + x26 + x27 + x28 + x29 + x30 + + x31 + x32 + x33 + x34 + x35 + x36 + x37 + x38 + x39 + x40, tempTrainData, cost = 4, epsilon = 0.04, gamma = 0.03, scale = FALSE)
+    tempTrainY <- predict(model, tempTrainData)
+    tempTestY <- predict(model, newTestData)
+    if (i == 1) {
+      actualTrainY <- tempTrainData$y
+      trainY <- tempTrainY
+      testY <- tempTestY
+    } else {
+      actualTrainY <- c(actualTrainY, tempTrainData$y)
+      trainY <- c(trainY, tempTrainY)
+      testY <- c(testY, tempTestY)
+    }
+  }
+  trainY <- trainY * (maxY - minY) + minY
+  testY <- testY * (maxY - minY) + minY
+  actualTrainY <- actualTrainY * (maxY - minY) + minY
+  trainError <- trainY - actualTrainY
+  testError <- testY - testData$y
+  trainOutput <- data.frame(actualTrainY, trainY, trainError)
+  testOutput <- data.frame(testData$y, testY, testError)
+  lowTrainOutput <- subset(trainOutput, actualTrainY < 150)
+  highTrainOutput <- subset(trainOutput, actualTrainY >= 150)
+  lowTestOutput <- subset(testOutput, testData$y < 150)
+  highTestOutput <- subset(testOutput, testData$y >= 150)
+  trainmae <- c(mean(abs(trainOutput$trainError)), mean(abs(lowTrainOutput$trainError)), mean(abs(highTrainOutput$trainError)))
+  testmae <- c(mean(abs(testOutput$testError)), mean(abs(lowTestOutput$testError)), mean(abs(highTestOutput$testError)))
+  trainbias <- c(mean(trainOutput$trainError), mean(lowTrainOutput$trainError), mean(highTrainOutput$trainError))
+  testbias <- c(mean(testOutput$testError), mean(lowTestOutput$testError), mean(highTestOutput$testError))
+  trainr2 <- c((cor(trainOutput)[2,1])^2, (cor(lowTrainOutput)[2,1])^2, (cor(highTrainOutput)[2,1])^2) 
+  testr2 <- c((cor(testOutput)[2,1])^2, (cor(lowTestOutput)[2,1])^2, (cor(highTestOutput)[2,1])^2)
+  list(trainOutput = trainOutput, testOutput = testOutput, trainmae = trainmae, testmae = testmae, trainbias = trainbias, testbias = testbias, trainr2 = trainr2, testr2 = testr2)
+}
+
+modelStatResult10 <- diffOutput(lowData, highData, testData, newTestData, 2)
+modelStatResult20 <- diffOutput(lowData, highData, testData, newTestData, 6)
+modelStatResult30 <- diffOutput(lowData, highData, testData, newTestData, 9)
+modelStatResult40 <- diffOutput(lowData, highData, testData, newTestData, 12)
+modelStatResult50 <- diffOutput(lowData, highData, testData, newTestData, 16)
+
+# Store results for training and test performances in csv files -----------
+write.table(modelStatResult$trainOutput, file = filename, sep = ",", row.names = FALSE)
+write.table(modelStatResult$testOutput, file = filename, sep = ",", row.names = FALSE)
+write.table(modelStatResult10$trainOutput, file = filename, sep = ",", row.names = FALSE)
+write.table(modelStatResult10$testOutput, file = filename, sep = ",", row.names = FALSE)
+write.table(modelStatResult20$trainOutput, file = filename, sep = ",", row.names = FALSE)
+write.table(modelStatResult20$testOutput, file = filename, sep = ",", row.names = FALSE)
+write.table(modelStatResult30$trainOutput, file = filename, sep = ",", row.names = FALSE)
+write.table(modelStatResult30$testOutput, file = filename, sep = ",", row.names = FALSE)
+write.table(modelStatResult40$trainOutput, file = filename, sep = ",", row.names = FALSE)
+write.table(modelStatResult40$testOutput, file = filename, sep = ",", row.names = FALSE)
+write.table(modelStatResult50$trainOutput, file = filename, sep = ",", row.names = FALSE)
+write.table(modelStatResult50$testOutput, file = filename, sep = ",", row.names = FALSE)
+
+combModelStatMAE <- cbind(modelStatResult$trainmae, modelStatResult10$trainmae, modelStatResult20$trainmae, modelStatResult30$trainmae, modelStatResult40$trainmae, modelStatResult50$trainmae, modelStatResult$testmae, modelStatResult10$testmae, modelStatResult20$testmae, modelStatResult30$testmae, modelStatResult40$testmae, modelStatResult50$testmae)
+rownames(combModelStatMAE) <- c("overall", "low", "high") 
+colnames(combModelStatMAE) <- c("train", "train10", "train20", "train30", "train40", "train50", "test", "test10", "test20", "test30","test40", "test50")
+write.table(combModelStatMAE, file = filename, sep = ",")
+
+combModelStatBias <- cbind(modelStatResult$trainbias, modelStatResult10$trainbias, modelStatResult20$trainbias, modelStatResult30$trainbias, modelStatResult40$trainbias, modelStatResult50$trainbias, modelStatResult$testbias, modelStatResult10$testbias, modelStatResult20$testbias, modelStatResult30$testbias, modelStatResult40$testbias, modelStatResult50$testbias)
+rownames(combModelStatBias) <- c("overall", "low", "high")
+colnames(combModelStatBias) <- c("train", "train10", "train20", "train30", "train40", "train50", "test", "test10", "test20", "test30","test40", "test50")
+write.table(combModelStatBias, file = filename, sep = ",")
+
+combModelStatR2 <- cbind(modelStatResult$trainr2, modelStatResult10$trainr2, modelStatResult20$trainr2, modelStatResult30$trainr2, modelStatResult40$trainr2, modelStatResult50$trainr2, modelStatResult$testr2, modelStatResult10$testr2, modelStatResult20$testr2, modelStatResult30$testr2, modelStatResult40$testr2, modelStatResult50$testr2)
+rownames(combModelStatR2) <- c("overall", "low", "high") 
+colnames(combModelStatR2) <- c("train", "train10", "train20", "train30", "train40", "train50", "test", "test10", "test20", "test30","test40", "test50")
+write.table(combModelStatR2, file = filename, sep = ",")
