@@ -1,0 +1,66 @@
+library(e1071)
+library(caret)
+
+# Data import and normalisation, and model tuning -------------------------
+fullData <- read.csv(filename, header = TRUE)
+minY <- min(fullData$y)
+maxY <- max(fullData$y)
+preFullData <- preProcess(fullData, method = "range")
+newFullData <- predict(preFullData, fullData)
+tuneResult <- tune(svm, y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10 + x11 + x12 + x13 + x14 + x15 + x16 + x17 + x18 + x19 + x20 + x21 + x22 + x23 + x24 + x25 + x26 + x27 + x28 + x29 + x30 + + x31 + x32 + x33 + x34 + x35 + x36 + x37 + x38 + x39 + x40, data = newFullData, scale = FALSE, ranges = list(epsilon = seq(0,0.01,0.001), cost = 2^(0:4), gamma = 2^(-5:-3)))
+print(tuneResult) #the optimal model parameters are cost = 4, epsilon = 0.04, gamma = 0.03
+
+
+# 10-fold cross validation ------------------------------------------------
+cvData <- newFullData[sample(nrow(fullData)), ]
+folds <- cut(seq(1, nrow(cvData)), breaks = 10, labels = FALSE)
+for (i in 1:10) {
+  testIndices <- which(folds == i, arr.ind = TRUE)
+  testData <- cvData[testIndices, ]
+  trainData <- cvData[-testIndices, ]
+  model <- svm(y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10 + x11 + x12 + x13 + x14 + x15 + x16 + x17 + x18 + x19 + x20 + x21 + x22 + x23 + x24 + x25 + x26 + x27 + x28 + x29 + x30 + + x31 + x32 + x33 + x34 + x35 + x36 + x37 + x38 + x39 + x40, trainData, cost = 4, epsilon = 0.04, gamma = 0.03, scale = FALSE)
+  predictY <- predict(model, testData)
+  actualY <- testData$y * (maxY - minY) + minY
+  predictY <- predictY * (maxY - minY) + minY
+  error <- predictY - actualY
+  if (i == 1) {
+    cvActualY <- actualY
+    cvPredictY <- predictY
+    cvError <- error
+  } else {
+    cvActualY <- c(cvActualY, actualY)
+    cvPredictY <- c(cvPredictY, predictY)
+    cvError <- c(cvError, error)
+  }
+}
+output <- data.frame(cvActualY, cvPredictY, cvError)
+
+# Finding the extreme high BOD cutoff value -------------------------------
+output <- output[order(output$cvActualY), ]
+cvErrorCopy <- rep(NA, 658)	
+for (i in 1:length(output$cvError)) {
+  if(output$cvError[[i]] > 0) {
+    cvErrorCopy[i] <- 1
+  } else {
+    cvErrorCopy[i] <- -1
+  }
+}	
+diff <- 0
+for (i in 1:657) {
+  tempDiff <- mean(cvErrorCopy[1:i]) - mean(cvErrorCopy[(i + 1):658])
+  if(tempDiff > diff) {
+    diff <- tempDiff
+    cutoff <- output$cvActualY[[i]] #the cutoff value is 150
+  }
+}
+
+# Store 10-fold cross validation results in a csv file --------------------
+lowOutput <- subset(output, cvActualY < 150)
+highOutput <- subset(output, cvActualY >= 150)
+mae <- c(mean(abs(output$cvError)), mean(abs(lowOutput$cvError)), mean(abs(highOutput$cvError))) 
+bias <- c(mean(output$cvError), mean(lowOutput$cvError), mean(highOutput$cvError))
+r2 <- c((cor(output)[2,1])^2, (cor(lowOutput)[2,1])^2, (cor(highOutput)[2,1])^2)
+cvResults <- data.frame(mae, bias, r2)
+rownames(cvResults) <- c("overall", "low", "high")
+colnames(cvResults) <- c("mae", "bias", "r2")
+write.table(cvResults, file = "filename", sep = ",", row.names = FALSE)
