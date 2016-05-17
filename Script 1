@@ -1,5 +1,6 @@
 library(e1071)
 library(caret)
+library(hydroGOF)
 
 # Data import and normalisation, and model tuning -------------------------
 fullData <- read.csv(filename, header = TRUE)
@@ -60,7 +61,8 @@ highOutput <- subset(output, cvActualY >= 150)
 mae <- c(mean(abs(output$cvError)), mean(abs(lowOutput$cvError)), mean(abs(highOutput$cvError))) 
 bias <- c(mean(output$cvError), mean(lowOutput$cvError), mean(highOutput$cvError))
 r2 <- c((cor(output)[2,1])^2, (cor(lowOutput)[2,1])^2, (cor(highOutput)[2,1])^2)
-cvResults <- data.frame(mae, bias, r2)
+nse <- c(NSE(output$cvPredictY, output$cvActualY), NSE(lowOutput$cvPredictY, lowOutput$cvActualY), NSE(highOutput$cvPredictY, highOutput$cvActualY))
+cvResults <- data.frame(mae, bias, r2, nse)
 rownames(cvResults) <- c("overall", "low", "high")
-colnames(cvResults) <- c("mae", "bias", "r2")
-write.table(cvResults, file = "filename", sep = ",", row.names = FALSE)
+colnames(cvResults) <- c("mae", "bias", "r2", "nse")
+write.table(cvResults, file = filename, sep = ",", row.names = FALSE)
