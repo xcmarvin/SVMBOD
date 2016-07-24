@@ -1,9 +1,10 @@
 library(caret)
 library(e1071)
+library(hydroGOF)
 
 # Data import and normalisation -------------------------------------------
-trainData <- read.csv(filename, header = TRUE)
-testData <- read.csv(filename, header = TRUE)
+trainData <- read.csv('G:/GE3551 Research Project/Data and Results/Water Quality Data Training Set.csv', header = TRUE)
+testData <- read.csv('G:/GE3551 Research Project/Data and Results/Water Quality Data Test Set.csv', header = TRUE)
 fullData <- rbind(trainData,testData)
 minY <- min(fullData$y)
 maxY <- max(fullData$y)
@@ -14,7 +15,7 @@ newTestData <- newFullData[529:658, ]
 
 # Model performance for original training set -----------------------------
 output <- function(trainData, testData, newTrainData, newTestData) {
-  model <- svm(y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10 + x11 + x12 + x13 + x14 + x15 + x16 + x17 + x18 + x19 + x20 + x21 + x22 + x23 + x24 + x25 + x26 + x27 + x28 + x29 + x30 + + x31 + x32 + x33 + x34 + x35 + x36 + x37 + x38 + x39 + x40, newTrainData, cost = 4, epsilon = 0.04, gamma = 0.03, scale = FALSE)
+  model <- svm(y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10 + x11 + x12 + x13 + x14 + x15 + x16 + x17 + x18 + x19 + x20 + x21 + x22 + x23 + x24 + x25 + x26 + x27 + x28 + x29 + x30 + x31 + x32 + x33 + x34 + x35 + x36 + x37 + x38 + x39 + x40, newTrainData, cost = 4, epsilon = 0.04, gamma = 0.03, scale = FALSE)
   trainY <- predict(model, newTrainData)
   testY <- predict(model, newTestData)
   trainY <- trainY * (maxY - minY) + minY
@@ -33,7 +34,47 @@ output <- function(trainData, testData, newTrainData, newTestData) {
   testbias <- c(mean(testOutput$testError), mean(lowTestOutput$testError), mean(highTestOutput$testError))
   trainr2 <- c((cor(trainOutput)[2,1])^2, (cor(lowTrainOutput)[2,1])^2, (cor(highTrainOutput)[2,1])^2) 
   testr2 <- c((cor(testOutput)[2,1])^2, (cor(lowTestOutput)[2,1])^2, (cor(highTestOutput)[2,1])^2)
-  list(trainOutput = trainOutput, testOutput = testOutput, trainmae = trainmae, testmae = testmae, trainbias = trainbias, testbias = testbias, trainr2 = trainr2, testr2 = testr2)
+  trainnse <- c(NSE(trainY, trainData$y), NSE(lowTrainOutput$trainY, lowTrainOutput$trainData.y), NSE(highTrainOutput$trainY, highTrainOutput$trainData.y))
+  testnse <- c(NSE(testY, testData$y), NSE(lowTestOutput$testY, lowTestOutput$testData.y), NSE(highTestOutput$testY, highTestOutput$testData.y))
+  positiveLowCoeff <- 0
+  negativeLowCoeff <- 0
+  positiveHighCoeff <- 0
+  negativeHighCoeff <- 0
+  countPositiveLowCoeff <- 0
+  countNegativeLowCoeff <- 0
+  countPositiveHighCoeff <- 0
+  countNegativeHighCoeff <- 0
+  listCoefs <- matrix(nrow = length(model$index), ncol = 2)
+  for (i in 1:length(model$index)) {
+    if (trainData$y[model$index[i]] < 150) {
+      if (model$coefs[i] > 0) {
+        positiveLowCoeff <- positiveLowCoeff + model$coefs[i]
+        countPositiveLowCoeff <- countPositiveLowCoeff + 1
+        listCoefs[i, 1] <- trainData$y[model$index[i]]
+        listCoefs[i, 2] <- 1
+      } else {
+        negativeLowCoeff <- negativeLowCoeff + model$coefs[i]
+        countNegativeLowCoeff <- countNegativeLowCoeff + 1
+        listCoefs[i, 1] <- trainData$y[model$index[i]]
+        listCoefs[i, 2] <- -1
+      }
+    } else {
+      if (model$coefs[i] > 0) {
+        positiveHighCoeff <- positiveHighCoeff + model$coefs[i]
+        countPositiveHighCoeff <- countPositiveHighCoeff + 1
+        listCoefs[i, 1] <- trainData$y[model$index[i]]
+        listCoefs[i, 2] <- 1
+      } else {
+        negativeHighCoeff <- negativeHighCoeff + model$coefs[i]
+        countNegativeHighCoeff <- countNegativeHighCoeff + 1
+        listCoefs[i, 1] <- trainData$y[model$index[i]]
+        listCoefs[i, 2] <- -1
+      } 
+    }
+  }
+  sumOfAlpha <- c(positiveLowCoeff, negativeLowCoeff, positiveHighCoeff, negativeHighCoeff)
+  numberOfSV <- c(countPositiveLowCoeff, countNegativeLowCoeff, countPositiveHighCoeff, countNegativeHighCoeff)
+  list(trainOutput = trainOutput, testOutput = testOutput, trainmae = trainmae, testmae = testmae, trainbias = trainbias, testbias = testbias, trainr2 = trainr2, testr2 = testr2, trainnse = trainnse, testnse = testnse, listCoefs = listCoefs, sumOfAlpha = sumOfAlpha, numberOfSV = numberOfSV)
 }
 
 modelStatResult <- output(trainData, testData, newTrainData, newTestData)
@@ -43,7 +84,7 @@ lowData <- subset(newTrainData, y < (150 - minY) / (maxY - minY))
 highData <- subset(newTrainData, y >= (150 - minY) / (maxY - minY))
 
 combineData <- function(trainData, highTrainData, m) {
-  for(i in 1:m) {
+  for (i in 1:m) {
     trainData <- trainData[-(1:16), ]
     trainData <- rbind(trainData, highData)
   }
@@ -52,30 +93,97 @@ combineData <- function(trainData, highTrainData, m) {
 
 diffOutput <- function(lowData, highData, testData, newTestData, n) {
   for (i in 1:10) {
-    set.seed(i)
+    set.seed (i)
     tempLowData <- lowData[sample(nrow(lowData)), ]
     tempTrainData <- rbind(tempLowData, highData)
     tempTrainData <- combineData(tempTrainData, highData, n)
-    model <- svm(y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10 + x11 + x12 + x13 + x14 + x15 + x16 + x17 + x18 + x19 + x20 + x21 + x22 + x23 + x24 + x25 + x26 + x27 + x28 + x29 + x30 + + x31 + x32 + x33 + x34 + x35 + x36 + x37 + x38 + x39 + x40, tempTrainData, cost = 4, epsilon = 0.04, gamma = 0.03, scale = FALSE)
+    model <- svm(y ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10 + x11 + x12 + x13 + x14 + x15 + x16 + x17 + x18 + x19 + x20 + x21 + x22 + x23 + x24 + x25 + x26 + x27 + x28 + x29 + x30 + x31 + x32 + x33 + x34 + x35 + x36 + x37 + x38 + x39 + x40, tempTrainData, cost = 4, epsilon = 0.04, gamma = 0.03, scale = FALSE)
     tempTrainY <- predict(model, tempTrainData)
     tempTestY <- predict(model, newTestData)
     if (i == 1) {
-      actualTrainY <- tempTrainData$y
+      actualTrainY <- tempTrainData$y * (maxY - minY) + minY
+      actualTestY <- testData$y
       trainY <- tempTrainY
       testY <- tempTestY
+      positiveLowCoeff <- 0
+      negativeLowCoeff <- 0
+      positiveHighCoeff <- 0
+      negativeHighCoeff <- 0
+      countPositiveLowCoeff <- 0
+      countNegativeLowCoeff <- 0
+      countPositiveHighCoeff <- 0
+      countNegativeHighCoeff <- 0
+      listCoefs <- matrix(nrow = length(model$index), ncol = 2)
+      for (j in 1:length(model$index)) {
+        if (actualTrainY[model$index[j]] < 150) {
+          if (model$coefs[j] > 0) {
+            positiveLowCoeff <- positiveLowCoeff + model$coefs[j]
+            countPositiveLowCoeff <- countPositiveLowCoeff + 1
+            listCoefs[j, 1] <- actualTrainY[model$index[j]]
+            listCoefs[j, 2] <- 1
+          } else {
+            negativeLowCoeff <- negativeLowCoeff + model$coefs[j]
+            countNegativeLowCoeff <- countNegativeLowCoeff + 1
+            listCoefs[j, 1] <- actualTrainY[model$index[j]]
+            listCoefs[j, 2] <- -1
+          }
+        } else {
+          if (model$coefs[j] > 0) {
+            positiveHighCoeff <- positiveHighCoeff + model$coefs[j]
+            countPositiveHighCoeff <- countPositiveHighCoeff + 1
+            listCoefs[j, 1] <- actualTrainY[model$index[j]]
+            listCoefs[j, 2] <- 1
+          } else {
+            negativeHighCoeff <- negativeHighCoeff + model$coefs[j]
+            countNegativeHighCoeff <- countNegativeHighCoeff + 1
+            listCoefs[j, 1] <- actualTrainY[model$index[j]]
+            listCoefs[j, 2] <- -1
+          } 
+        }
+      }
     } else {
-      actualTrainY <- c(actualTrainY, tempTrainData$y)
+      tempActualTrainY <- tempTrainData$y * (maxY - minY) + minY
+      actualTrainY <- c(actualTrainY, tempActualTrainY)
+      actualTestY <- c(actualTestY, testData$y)
       trainY <- c(trainY, tempTrainY)
       testY <- c(testY, tempTestY)
+      tempListCoefs <- matrix(nrow = length(model$index), ncol = 2)
+      for (j in 1:length(model$index)) {
+        if (tempActualTrainY[model$index[j]] < 150) {
+          if (model$coefs[j] > 0) {
+            positiveLowCoeff <- positiveLowCoeff + model$coefs[j]
+            countPositiveLowCoeff <- countPositiveLowCoeff + 1
+            tempListCoefs[j, 1] <- tempActualTrainY[model$index[j]]
+            tempListCoefs[j, 2] <- 1
+          } else {
+            negativeLowCoeff <- negativeLowCoeff + model$coefs[j]
+            countNegativeLowCoeff <- countNegativeLowCoeff + 1
+            tempListCoefs[j, 1] <- tempActualTrainY[model$index[j]]
+            tempListCoefs[j, 2] <- -1
+          }
+        } else {
+          if (model$coefs[j] > 0) {
+            positiveHighCoeff <- positiveHighCoeff + model$coefs[j]
+            countPositiveHighCoeff <- countPositiveHighCoeff + 1
+            tempListCoefs[j, 1] <- tempActualTrainY[model$index[j]]
+            tempListCoefs[j, 2] <- 1
+          } else {
+            negativeHighCoeff <- negativeHighCoeff + model$coefs[j]
+            countNegativeHighCoeff <- countNegativeHighCoeff + 1
+            tempListCoefs[j, 1] <- tempActualTrainY[model$index[j]]
+            tempListCoefs[j, 2] <- -1
+          } 
+        }
+      }
+      listCoefs <- rbind(listCoefs, tempListCoefs)
     }
   }
   trainY <- trainY * (maxY - minY) + minY
   testY <- testY * (maxY - minY) + minY
-  actualTrainY <- actualTrainY * (maxY - minY) + minY
   trainError <- trainY - actualTrainY
-  testError <- testY - testData$y
+  testError <- testY - actualTestY
   trainOutput <- data.frame(actualTrainY, trainY, trainError)
-  testOutput <- data.frame(testData$y, testY, testError)
+  testOutput <- data.frame(actualTestY, testY, testError)
   lowTrainOutput <- subset(trainOutput, actualTrainY < 150)
   highTrainOutput <- subset(trainOutput, actualTrainY >= 150)
   lowTestOutput <- subset(testOutput, testData$y < 150)
@@ -86,7 +194,11 @@ diffOutput <- function(lowData, highData, testData, newTestData, n) {
   testbias <- c(mean(testOutput$testError), mean(lowTestOutput$testError), mean(highTestOutput$testError))
   trainr2 <- c((cor(trainOutput)[2,1])^2, (cor(lowTrainOutput)[2,1])^2, (cor(highTrainOutput)[2,1])^2) 
   testr2 <- c((cor(testOutput)[2,1])^2, (cor(lowTestOutput)[2,1])^2, (cor(highTestOutput)[2,1])^2)
-  list(trainOutput = trainOutput, testOutput = testOutput, trainmae = trainmae, testmae = testmae, trainbias = trainbias, testbias = testbias, trainr2 = trainr2, testr2 = testr2)
+  trainnse <- c(NSE(trainY, actualTrainY), NSE(lowTrainOutput$trainY, lowTrainOutput$actualTrainY), NSE(highTrainOutput$trainY, highTrainOutput$actualTrainY))
+  testnse <- c(NSE(testY, actualTestY), NSE(lowTestOutput$testY, lowTestOutput$actualTestY), NSE(highTestOutput$testY, highTestOutput$actualTestY))
+  sumOfAlpha <- c(positiveLowCoeff, negativeLowCoeff, positiveHighCoeff, negativeHighCoeff)
+  numberOfSV <- c(countPositiveLowCoeff, countNegativeLowCoeff, countPositiveHighCoeff, countNegativeHighCoeff)
+  list(trainOutput = trainOutput, testOutput = testOutput, trainmae = trainmae, testmae = testmae, trainbias = trainbias, testbias = testbias, trainr2 = trainr2, testr2 = testr2, trainnse = trainnse, testnse = testnse, listCoefs = listCoefs, sumOfAlpha = sumOfAlpha, numberOfSV = numberOfSV)
 }
 
 modelStatResult10 <- diffOutput(lowData, highData, testData, newTestData, 2)
@@ -96,30 +208,46 @@ modelStatResult40 <- diffOutput(lowData, highData, testData, newTestData, 12)
 modelStatResult50 <- diffOutput(lowData, highData, testData, newTestData, 16)
 
 # Store results for training and test performances in csv files -----------
-write.table(modelStatResult$trainOutput, file = filename, sep = ",", row.names = FALSE)
-write.table(modelStatResult$testOutput, file = filename, sep = ",", row.names = FALSE)
-write.table(modelStatResult10$trainOutput, file = filename, sep = ",", row.names = FALSE)
-write.table(modelStatResult10$testOutput, file = filename, sep = ",", row.names = FALSE)
-write.table(modelStatResult20$trainOutput, file = filename, sep = ",", row.names = FALSE)
-write.table(modelStatResult20$testOutput, file = filename, sep = ",", row.names = FALSE)
-write.table(modelStatResult30$trainOutput, file = filename, sep = ",", row.names = FALSE)
-write.table(modelStatResult30$testOutput, file = filename, sep = ",", row.names = FALSE)
-write.table(modelStatResult40$trainOutput, file = filename, sep = ",", row.names = FALSE)
-write.table(modelStatResult40$testOutput, file = filename, sep = ",", row.names = FALSE)
-write.table(modelStatResult50$trainOutput, file = filename, sep = ",", row.names = FALSE)
-write.table(modelStatResult50$testOutput, file = filename, sep = ",", row.names = FALSE)
+write.table(modelStatResult$trainOutput, file = "G:/GE3551 Research Project/Data and Results/trainoutput.csv", sep = ",", row.names = FALSE)
+write.table(modelStatResult$listCoefs, file = "G:/GE3551 Research Project/Data and Results/listcoefs.csv", sep = ",", row.names = FALSE)
+write.table(modelStatResult$testOutput, file = "G:/GE3551 Research Project/Data and Results/testoutput.csv", sep = ",", row.names = FALSE)
+write.table(modelStatResult10$trainOutput, file = "G:/GE3551 Research Project/Data and Results/trainoutput10.csv", sep = ",", row.names = FALSE)
+write.table(modelStatResult10$listCoefs, file = "G:/GE3551 Research Project/Data and Results/listcoefs10.csv", sep = ",", row.names = FALSE)
+write.table(modelStatResult10$testOutput, file = "G:/GE3551 Research Project/Data and Results/testoutput10.csv", sep = ",", row.names = FALSE)
+write.table(modelStatResult20$trainOutput, file = "G:/GE3551 Research Project/Data and Results/trainoutput20.csv", sep = ",", row.names = FALSE)
+write.table(modelStatResult20$listCoefs, file = "G:/GE3551 Research Project/Data and Results/listcoefs20.csv", sep = ",", row.names = FALSE)
+write.table(modelStatResult20$testOutput, file = "G:/GE3551 Research Project/Data and Results/testoutput20.csv", sep = ",", row.names = FALSE)
+write.table(modelStatResult30$trainOutput, file = "G:/GE3551 Research Project/Data and Results/trainoutput30.csv", sep = ",", row.names = FALSE)
+write.table(modelStatResult30$listCoefs, file = "G:/GE3551 Research Project/Data and Results/listcoefs30.csv", sep = ",", row.names = FALSE)
+write.table(modelStatResult30$testOutput, file = "G:/GE3551 Research Project/Data and Results/testoutput30.csv", sep = ",", row.names = FALSE)
+write.table(modelStatResult40$trainOutput, file = "G:/GE3551 Research Project/Data and Results/trainoutput40.csv", sep = ",", row.names = FALSE)
+write.table(modelStatResult40$listCoefs, file = "G:/GE3551 Research Project/Data and Results/listcoefs40.csv", sep = ",", row.names = FALSE)
+write.table(modelStatResult40$testOutput, file = "G:/GE3551 Research Project/Data and Results/testoutput40.csv", sep = ",", row.names = FALSE)
+write.table(modelStatResult50$trainOutput, file = "G:/GE3551 Research Project/Data and Results/trainoutput50.csv", sep = ",", row.names = FALSE)
+write.table(modelStatResult50$listCoefs, file = "G:/GE3551 Research Project/Data and Results/listcoefs50.csv", sep = ",", row.names = FALSE)
+write.table(modelStatResult50$testOutput, file = "G:/GE3551 Research Project/Data and Results/testoutput50.csv", sep = ",", row.names = FALSE)
 
 combModelStatMAE <- cbind(modelStatResult$trainmae, modelStatResult10$trainmae, modelStatResult20$trainmae, modelStatResult30$trainmae, modelStatResult40$trainmae, modelStatResult50$trainmae, modelStatResult$testmae, modelStatResult10$testmae, modelStatResult20$testmae, modelStatResult30$testmae, modelStatResult40$testmae, modelStatResult50$testmae)
 rownames(combModelStatMAE) <- c("overall", "low", "high") 
-colnames(combModelStatMAE) <- c("train", "train10", "train20", "train30", "train40", "train50", "test", "test10", "test20", "test30","test40", "test50")
-write.table(combModelStatMAE, file = filename, sep = ",")
+colnames(combModelStatMAE) <- c("train", "train10", "train20", "train30", "train40", "train50", "test", "test10", "test20", "test30", "test40", "test50")
+write.table(combModelStatMAE, file = "G:/GE3551 Research Project/Data and Results/combmodelstatmae.csv", sep = ",")
 
 combModelStatBias <- cbind(modelStatResult$trainbias, modelStatResult10$trainbias, modelStatResult20$trainbias, modelStatResult30$trainbias, modelStatResult40$trainbias, modelStatResult50$trainbias, modelStatResult$testbias, modelStatResult10$testbias, modelStatResult20$testbias, modelStatResult30$testbias, modelStatResult40$testbias, modelStatResult50$testbias)
 rownames(combModelStatBias) <- c("overall", "low", "high")
-colnames(combModelStatBias) <- c("train", "train10", "train20", "train30", "train40", "train50", "test", "test10", "test20", "test30","test40", "test50")
-write.table(combModelStatBias, file = filename, sep = ",")
+colnames(combModelStatBias) <- c("train", "train10", "train20", "train30", "train40", "train50", "test", "test10", "test20", "test30", "test40", "test50")
+write.table(combModelStatBias, file = "G:/GE3551 Research Project/Data and Results/combmodelstatbias.csv", sep = ",")
 
 combModelStatR2 <- cbind(modelStatResult$trainr2, modelStatResult10$trainr2, modelStatResult20$trainr2, modelStatResult30$trainr2, modelStatResult40$trainr2, modelStatResult50$trainr2, modelStatResult$testr2, modelStatResult10$testr2, modelStatResult20$testr2, modelStatResult30$testr2, modelStatResult40$testr2, modelStatResult50$testr2)
 rownames(combModelStatR2) <- c("overall", "low", "high") 
-colnames(combModelStatR2) <- c("train", "train10", "train20", "train30", "train40", "train50", "test", "test10", "test20", "test30","test40", "test50")
-write.table(combModelStatR2, file = filename, sep = ",")
+colnames(combModelStatR2) <- c("train", "train10", "train20", "train30", "train40", "train50", "test", "test10", "test20", "test30", "test40", "test50")
+write.table(combModelStatR2, file = "G:/GE3551 Research Project/Data and Results/combmodelstatr2.csv", sep = ",")
+
+combModelStatNSE <- cbind(modelStatResult$trainnse, modelStatResult10$trainnse, modelStatResult20$trainnse, modelStatResult30$trainnse, modelStatResult40$trainnse, modelStatResult50$trainnse, modelStatResult$testnse, modelStatResult10$testnse, modelStatResult20$testnse, modelStatResult30$testnse, modelStatResult40$testnse, modelStatResult50$testnse)
+rownames(combModelStatNSE) <- c("overall", "low", "high") 
+colnames(combModelStatNSE) <- c("train", "train10", "train20", "train30", "train40", "train50", "test", "test10", "test20", "test30", "test40", "test50")
+write.table(combModelStatNSE, file = "G:/GE3551 Research Project/Data and Results/combmodelstatnse.csv", sep = ",")
+
+combModelSV <- cbind(modelStatResult$sumOfAlpha, modelStatResult10$sumOfAlpha, modelStatResult20$sumOfAlpha, modelStatResult30$sumOfAlpha, modelStatResult40$sumOfAlpha, modelStatResult50$sumOfAlpha, modelStatResult$numberOfSV, modelStatResult10$numberOfSV, modelStatResult20$numberOfSV, modelStatResult30$numberOfSV, modelStatResult40$numberOfSV, modelStatResult50$numberOfSV)
+rownames(combModelSV) <- c("positivelowcoeff", "negativelowcoeff", "positivehighcoeff", "negativehighcoeff") 
+colnames(combModelSV) <- c("trainsum", "train10sum", "train20sum", "train30sum", "train40sum", "train50sum", "traincount", "train10count", "train20count", "train30count", "train40count", "train50count")
+write.table(combModelSV, file = "G:/GE3551 Research Project/Data and Results/combmodelsv.csv", sep = ",")
