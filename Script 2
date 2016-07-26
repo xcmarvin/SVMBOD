@@ -3,9 +3,9 @@ library(e1071)
 library(hydroGOF)
 
 # Data import and normalisation -------------------------------------------
-trainData <- read.csv(filename)
-testData <- read.csv(filename)
-fullData <- rbind(trainData,testData)
+trainData <- read.csv(filename, header = TRUE)
+testData <- read.csv(filename, header = TRUE)
+fullData <- rbind(trainData, testData)
 minY <- min(fullData$y)
 maxY <- max(fullData$y)
 preFullData <- preProcess(fullData, method = "range")
