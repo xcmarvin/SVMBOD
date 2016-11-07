@@ -1,4 +1,4 @@
-# SVMBOD
-R scripts for SVM BOD regression models
+# SVRBOD
+R scripts for SVR BOD regression models
 
 The three R scripts in this repository supplements the paper.
